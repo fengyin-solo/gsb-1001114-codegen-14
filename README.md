@@ -74,3 +74,32 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 边坡风险结论工作流
+
+边坡防护（`slope`）在普通台账之外，由一套**单一版本状态机**驱动风险结论，阶段只能顺序
+推进，跳级与倒序都会被拒绝：
+
+```text
+待复核 ──现场复核──▶ 已复核 ──评级发布──▶ 已发布 ──点选偏离坡段生成踏勘任务──▶ 踏勘中 ──踏勘完成──▶ 已踏勘
+```
+
+- **现场复核**（`POST /api/slope/{id}/reviews`）：记录现场评级；已复核后再提交视为改评，
+  旧版本作废（`superseded=true`）。评级冲突一律以**最近一次现场复核**为准。
+- **评级发布**（`POST /api/slope/{id}/publish`）：结论在同一个数据库事务内写入
+  **边坡台账、路面病害待办、工程清单**（`pavement`/`project` 行带 `来源=slope-conclusion:<id>`，
+  重复发布按来源键幂等更新）。
+- **稳定性剖面带**（`GET /api/slope/profile`）：沿里程返回每个测点的坡高、防护形式、
+  巡检间隔、相邻病害与偏离标记，支持分段加载。风险点数按测点主键 `point_key` 全量去重统计，
+  随每段返回同一个 `risk_points`，前端不能跨段累加。
+- **点选偏离坡段生成踏勘任务**（`POST /api/slope/{id}/survey-tasks`）：只接受偏离测点，
+  任务按 `point_key` 幂等；任务生成与剖面结论（边坡台账、路面病害清单、工程待办）在同一
+  事务提交，概览风险点数同步重算。
+- **并发版本锁**：所有推进动作都要带 `expected_version`，服务端在事务内二次校验；版本过期
+  返回业务冲突（`ok=false`，`entry.code=409`），并发改评只有一个结论生效。
+- **历史坡段**：`结论阶段=历史归档`（`version=0`）的坡段按原防护前提保留，拒绝一切评级流转。
+- 踏勘任务清单见 `GET /api/slope/surveys`，单坡全貌（版本历史+剖面+任务）见
+  `GET /api/slope/{id}/workflow`，风险总览数字见 `GET /api/slope/risk-summary`。
+
+存储层（`app/store.py`）提供 `store.transaction()` 工作单元：异常时按操作日志逆序回滚，
+并通过版本号快照保证并发结论的一致性；`/api/overview` 新增“边坡风险点数”卡片。

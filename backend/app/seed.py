@@ -1,7 +1,126 @@
-"""示例数据：每个模块给几条不同状态的记录，方便起服务后立刻看到内容。"""
+"""示例数据：每个模块给几条不同状态的记录，方便起服务后立刻看到内容。
+
+边坡防护相关三张附属表：
+- slope_review：风险结论版本（现场复核 → 评级发布 → 踏勘任务 的单一状态机载体）；
+- slope_profile_point：稳定性剖面带测点（沿里程的坡高/防护/巡检间隔/相邻病害）；
+- slope_survey：偏离坡段生成的工程踏勘任务。
+"""
 from __future__ import annotations
 
 from typing import Any
+
+
+def _slope_seed() -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """构造边坡台账及其复核版本、剖面测点、踏勘任务示例。
+
+    历史坡段（4 号）没有复核版本，按原防护前提保留，不进入风险重算。
+    """
+    slopes: list[dict[str, Any]] = [
+        {
+            "id": 1, "status": "稳定", "pending": False, "abnormal": False, "version": 3,
+            "结论阶段": "已踏勘",
+            "边坡编号": "SLOP-0001", "所属路段": "城北快速路K12段", "边坡类型": "路堑岩质边坡",
+            "坡高": "18m", "防护形式": "锚杆框架+挂网喷播", "稳定性评级": "稳定",
+            "最近巡检": "2026-09-20", "边坡状态": "稳定",
+            "起点桩号": "K12+000", "终点桩号": "K12+400",
+        },
+        {
+            "id": 2, "status": "局部变形", "pending": True, "abnormal": True, "version": 2,
+            "结论阶段": "已发布",
+            "边坡编号": "SLOP-0002", "所属路段": "城北快速路K12段", "边坡类型": "路堤土质边坡",
+            "坡高": "12m", "防护形式": "浆砌片石护坡", "稳定性评级": "较差",
+            "最近巡检": "2026-09-26", "边坡状态": "局部变形",
+            "起点桩号": "K12+400", "终点桩号": "K12+800",
+        },
+        {
+            "id": 3, "status": "待复核", "pending": True, "abnormal": False, "version": 1,
+            "结论阶段": "待复核",
+            "边坡编号": "SLOP-0003", "所属路段": "城东联络线K05段", "边坡类型": "路堑土质边坡",
+            "坡高": "22m", "防护形式": "三维网喷播植草", "稳定性评级": "—",
+            "最近巡检": "2026-09-28", "边坡状态": "待复核",
+            "起点桩号": "K05+200", "终点桩号": "K05+600",
+        },
+        {
+            # 历史坡段：保留原防护前提，无复核版本，不被新一轮评级覆盖
+            "id": 4, "status": "稳定", "pending": False, "abnormal": False, "version": 0,
+            "结论阶段": "历史归档",
+            "边坡编号": "SLOP-H1998", "所属路段": "老过境路K02段", "边坡类型": "路堤边坡",
+            "坡高": "8m", "防护形式": "干砌片石（原防护）", "稳定性评级": "原前提保留",
+            "最近巡检": "2025-12-10", "边坡状态": "稳定",
+            "起点桩号": "K02+000", "终点桩号": "K02+300",
+        },
+    ]
+
+    reviews = [
+        # v1 已被 v3 覆盖（同一边坡的历史版本保留，但风险以最近一次现场复核为准）
+        {"id": 1, "slope_id": 1, "version": 1, "stage": "已踏勘", "superseded": True,
+         "复核人": "王工", "复核日期": "2026-09-10", "现场评级": "稳定",
+         "建议评级": "稳定", "结论说明": "框架完好，排水通畅", "published_at": "2026-09-11"},
+        {"id": 2, "slope_id": 1, "version": 3, "stage": "已踏勘", "superseded": False,
+         "复核人": "王工", "复核日期": "2026-09-18", "现场评级": "稳定",
+         "建议评级": "稳定", "结论说明": "复测位移收敛，维持稳定", "published_at": "2026-09-19"},
+        {"id": 3, "slope_id": 2, "version": 2, "stage": "已发布", "superseded": False,
+         "复核人": "李工", "复核日期": "2026-09-25", "现场评级": "较差",
+         "建议评级": "较差", "结论说明": "坡脚鼓胀，片石护坡开裂约8mm", "published_at": "2026-09-26"},
+        {"id": 4, "slope_id": 3, "version": 1, "stage": "待复核", "superseded": False,
+         "复核人": "", "复核日期": "2026-09-28", "现场评级": "",
+         "建议评级": "", "结论说明": "雨后例行排查，待现场复核确认", "published_at": None},
+    ]
+
+    points: list[dict[str, Any]] = []
+
+    def add_points(slope_id: int, road: str, start: int, items: list[tuple[int, float, str, int, str, bool, bool]]) -> None:
+        for offset, height, protection, interval, disease, is_risk, deviation in items:
+            mileage = start + offset
+            points.append({
+                # 稳定主键：同一边坡+里程，分段重复加载不会产生重复测点
+                "id": len(points) + 1,
+                "point_key": f"S{slope_id}-{mileage}",
+                "slope_id": slope_id,
+                "所属路段": road,
+                "里程桩号": f"K{mileage // 1000}+{mileage % 1000:03d}",
+                "里程米": mileage,
+                "坡高": height,
+                "防护形式": protection,
+                "巡检间隔": interval,
+                "相邻病害": disease,
+                "is_risk": is_risk,
+                "deviation": deviation,
+                "投影状态": "已投影" if is_risk else "未投影",
+            })
+
+    add_points(1, "城北快速路K12段", 12000, [
+        (0, 17.5, "锚杆框架+挂网喷播", 30, "无", False, False),
+        (100, 18.0, "锚杆框架+挂网喷播", 30, "无", False, False),
+        (200, 18.6, "锚杆框架+挂网喷播", 30, "无", False, False),
+        (300, 17.8, "锚杆框架+挂网喷播", 30, "K12+320排水沟轻微淤积", False, False),
+    ])
+    add_points(2, "城北快速路K12段", 12400, [
+        (0, 11.2, "浆砌片石护坡", 15, "K12+410纵向裂缝2条", False, False),
+        (100, 12.4, "浆砌片石护坡", 7, "K12+500坡脚鼓胀、护坡开裂", True, True),
+        (200, 13.1, "浆砌片石护坡", 7, "K12+610片石脱落约4㎡", True, True),
+        (300, 11.8, "浆砌片石护坡", 15, "无", False, False),
+    ])
+    add_points(3, "城东联络线K05段", 5200, [
+        (0, 20.5, "三维网喷播植草", 15, "无", False, False),
+        (100, 21.8, "三维网喷播植草", 15, "无", False, False),
+        (200, 23.4, "三维网喷播植草", 7, "K05+420坡面冲沟深0.6m", True, True),
+        (300, 22.0, "三维网喷播植草", 15, "无", False, False),
+    ])
+
+    surveys = [
+        {"id": 1, "slope_id": 2, "point_key": "S2-12600", "任务编号": "SURV-0001",
+         "任务状态": "待踏勘", "里程桩号": "K12+600", "踏勘事由": "坡脚鼓胀，防护开裂",
+         "创建时间": "2026-09-26 10:20", "来源版本": 2},
+        {"id": 2, "slope_id": 1, "point_key": "S1-12200", "任务编号": "SURV-0000",
+         "任务状态": "已踏勘", "里程桩号": "K12+200", "踏勘事由": "早期变形复测（历史任务）",
+         "创建时间": "2026-09-11 09:00", "来源版本": 1},
+    ]
+    return slopes, reviews, points, surveys
+
+
+_SLOPE_ROWS, _SLOPE_REVIEWS, _SLOPE_POINTS, _SLOPE_SURVEYS = _slope_seed()
+
 
 SEED_ROWS: dict[str, list[dict[str, Any]]] = {
     "road_section": [{'id': 1,
@@ -436,42 +555,7 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '投入人员': '防汛应急样例3',
   '恢复时间': '2026-09-03',
   '防汛状态': '防汛应急样例3'}],
-    "slope": [{'id': 1,
-  'status': '稳定',
-  'pending': True,
-  'abnormal': False,
-  '边坡编号': 'SLOP-0001',
-  '所属路段': '边坡防护样例1',
-  '边坡类型': '边坡防护样例1',
-  '坡高': '边坡防护样例1',
-  '防护形式': '边坡防护样例1',
-  '稳定性评级': '边坡防护样例1',
-  '最近巡检': '边坡防护样例1',
-  '边坡状态': '边坡防护样例1'},
- {'id': 2,
-  'status': '局部变形',
-  'pending': True,
-  'abnormal': True,
-  '边坡编号': 'SLOP-0002',
-  '所属路段': '边坡防护样例2',
-  '边坡类型': '边坡防护样例2',
-  '坡高': '边坡防护样例2',
-  '防护形式': '边坡防护样例2',
-  '稳定性评级': '边坡防护样例2',
-  '最近巡检': '边坡防护样例2',
-  '边坡状态': '边坡防护样例2'},
- {'id': 3,
-  'status': '失稳',
-  'pending': False,
-  'abnormal': False,
-  '边坡编号': 'SLOP-0003',
-  '所属路段': '边坡防护样例3',
-  '边坡类型': '边坡防护样例3',
-  '坡高': '边坡防护样例3',
-  '防护形式': '边坡防护样例3',
-  '稳定性评级': '边坡防护样例3',
-  '最近巡检': '边坡防护样例3',
-  '边坡状态': '边坡防护样例3'}],
+    "slope": [dict(row) for row in _SLOPE_ROWS],
     "expansion": [{'id': 1,
   'status': '正常',
   'pending': True,
@@ -651,5 +735,9 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '供应商': '养护材料样例3',
   '进场日期': '2026-09-03',
   '存放地点': '养护材料样例3',
-  '材料状态': '养护材料样例3'}]
+  '材料状态': '养护材料样例3'}],
+    # ---- 边坡风险结论工作流附属表 ----
+    "slope_review": [dict(row) for row in _SLOPE_REVIEWS],
+    "slope_profile_point": [dict(row) for row in _SLOPE_POINTS],
+    "slope_survey": [dict(row) for row in _SLOPE_SURVEYS],
 }
