@@ -5,14 +5,25 @@
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import ROUTERS
+from app.services.slope import bootstrap_projection
 from app.store import store
 
-app = FastAPI(title="市政道路桥梁养护管理平台", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动后按种子边坡结论与踏勘任务重算一次风险投影（幂等）
+    bootstrap_projection()
+    yield
+
+
+app = FastAPI(title="市政道路桥梁养护管理平台", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

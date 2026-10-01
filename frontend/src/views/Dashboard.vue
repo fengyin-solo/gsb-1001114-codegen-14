@@ -47,7 +47,7 @@ onMounted(async () => {
     cards.value = payload.cards
     moduleRows.value = payload.modules
   } catch {
-    cards.value = [{"label": "业务模块", "value": 0}, {"label": "今日新增", "value": 0}]
+    cards.value = [{"label": "业务模块", "value": 0}, {"label": "今日新增", "value": 0}, {"label": "风险点数", "value": 0}]
     moduleRows.value = [{"name": "路段管理", "created": 0, "pending": 0, "abnormal": 0}, {"name": "日常巡查", "created": 0, "pending": 0, "abnormal": 0}, {"name": "路面病害", "created": 0, "pending": 0, "abnormal": 0}, {"name": "桥梁定检", "created": 0, "pending": 0, "abnormal": 0}, {"name": "桥梁档案", "created": 0, "pending": 0, "abnormal": 0}, {"name": "隧道管养", "created": 0, "pending": 0, "abnormal": 0}, {"name": "交安设施", "created": 0, "pending": 0, "abnormal": 0}, {"name": "排水设施", "created": 0, "pending": 0, "abnormal": 0}, {"name": "绿化管养", "created": 0, "pending": 0, "abnormal": 0}, {"name": "路灯照明", "created": 0, "pending": 0, "abnormal": 0}, {"name": "除雪防滑", "created": 0, "pending": 0, "abnormal": 0}, {"name": "防汛应急", "created": 0, "pending": 0, "abnormal": 0}, {"name": "边坡防护", "created": 0, "pending": 0, "abnormal": 0}, {"name": "伸缩缝管理", "created": 0, "pending": 0, "abnormal": 0}, {"name": "支座维护", "created": 0, "pending": 0, "abnormal": 0}, {"name": "养护工程", "created": 0, "pending": 0, "abnormal": 0}, {"name": "养护车辆", "created": 0, "pending": 0, "abnormal": 0}, {"name": "养护材料", "created": 0, "pending": 0, "abnormal": 0}]
   }
 })
